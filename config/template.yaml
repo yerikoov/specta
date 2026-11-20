@@ -1,0 +1,103 @@
+# Expected sections of the ТЗ template.
+# Replace this file with the organizers' template — no code changes needed.
+# key:        stable id used by agents (do not localize)
+# name:       canonical section name
+# synonyms:   lowercase substrings that identify the section in headings
+# required:   missing required section => finding
+# severity:   severity of the "missing" finding
+# hint:       what the section should contain (shown to the user / used in LLM prompts)
+# default:    text inserted when the user accepts "add a typical section"
+# stub:       true = `default` only describes what to write (not a requirement): the section stays an open
+#             finding «заготовка — впишите конкретику» until the analyst fills it in
+template_name: "Шаблон ТЗ финтех-проекта (демо)"
+sections:
+  - key: general
+    name: "Общие сведения"
+    synonyms: ["общие сведения", "общие положения", "введение", "о проекте"]
+    required: true
+    severity: important
+    hint: "Название проекта, заказчик, исполнитель, основание для разработки."
+    default: "Наименование системы, заказчик, исполнитель, основание для разработки и ответственные лица."
+    stub: true
+  - key: goals
+    name: "Цели и задачи"
+    synonyms: ["цел", "задачи проекта", "назначение"]
+    required: true
+    severity: important
+    hint: "Бизнес-цели с измеримыми метриками успеха."
+    default: "Бизнес-цели проекта и измеримые метрики успеха (KPI) с целевыми значениями и сроками."
+    stub: true
+  - key: glossary
+    name: "Термины и определения"
+    synonyms: ["термин", "глоссарий", "определения", "сокращения"]
+    required: false
+    severity: minor
+    hint: "Словарь терминов и аббревиатур."
+    default: "Перечень терминов и сокращений, используемых в документе, с определениями."
+    stub: true
+  - key: roles
+    name: "Пользователи и роли"
+    synonyms: ["роли", "пользователи и роли", "акторы", "участники процесса"]
+    required: true
+    severity: important
+    hint: "Перечень ролей и их полномочий."
+    default: "Роли: Клиент (пользуется сервисом), Оператор поддержки (просмотр операций, без права изменения), Администратор (управление лимитами и тарифами), Комплаенс-офицер (разбор подозрительных операций)."
+  - key: functional
+    name: "Функциональные требования"
+    synonyms: ["функциональные требования", "функциональн", "функции системы", "сценарии"]
+    required: true
+    severity: critical
+    hint: "Пронумерованные проверяемые требования."
+    default: "Пронумерованный перечень функциональных требований в формате «Система должна…» с измеримыми условиями."
+    stub: true
+  - key: nfr
+    name: "Нефункциональные требования"
+    synonyms: ["нефункциональн", "производительност", "качеств", "надежност", "надёжност"]
+    required: true
+    severity: important
+    hint: "Производительность, доступность, масштабируемость в числах."
+    default: "Доступность сервиса — не ниже 99,9% в месяц; время отклика — не более 1 с для 95% запросов; пиковая нагрузка — 300 операций в секунду; RTO — 1 час, RPO — 5 минут."
+  - key: integrations
+    name: "Интеграции"
+    synonyms: ["интеграц", "внешние системы", "взаимодействие с", "api"]
+    required: true
+    severity: important
+    hint: "Внешние системы, протоколы, форматы, таймауты, обработка ошибок."
+    default: "Перечень внешних систем, протокол (REST/JSON поверх TLS 1.2+), таймауты (не более 5 с), политика повторов и обработка ошибок."
+  - key: security
+    name: "Информационная безопасность"
+    synonyms: ["безопасност", "информационная безопасность", "защита информации", "иб"]
+    required: true
+    severity: critical
+    hint: "Аутентификация, шифрование, журналирование, антифрод."
+    default: "Двухфакторная аутентификация клиента; шифрование данных при передаче (TLS 1.2+) и хранении (AES-256); журналирование всех операций с хранением журналов не менее 5 лет; антифрод-мониторинг операций."
+  - key: compliance
+    name: "Соответствие регуляторным требованиям"
+    synonyms: ["регулятор", "комплаенс", "kyc", "aml", "под/фт", "соответствие требованиям"]
+    required: true
+    severity: critical
+    hint: "KYC/AML, защита персональных данных, требования регулятора."
+    default: "Система соответствует требованиям законодательства РК о ПОД/ФТ, о персональных данных и их защите, а также требованиям Национального Банка РК к платёжным услугам."
+  - key: acceptance
+    name: "Критерии приёмки"
+    synonyms: ["приемк", "приёмк", "критерии приемки", "критерии приёмки", "испытани"]
+    required: true
+    severity: important
+    hint: "Как проверить, что требования выполнены."
+    default: "Каждое функциональное требование подтверждается тест-кейсом; приёмка выполняется на тестовом стенде по программе и методике испытаний; критерий — 100% критичных тест-кейсов пройдено."
+  - key: schedule
+    name: "Сроки и этапы"
+    synonyms: ["срок", "этап", "план работ", "календарный план"]
+    required: false
+    severity: minor
+    hint: "Этапы, вехи, даты."
+    default: "Этапы: аналитика, разработка, тестирование, пилот, промышленный запуск — с датами начала и окончания."
+    stub: true
+  - key: risks
+    name: "Риски и ограничения"
+    synonyms: ["риск", "ограничени", "допущени"]
+    required: false
+    severity: minor
+    hint: "Ключевые риски и допущения."
+    default: "Ключевые риски проекта, их вероятность, влияние и меры снижения."
+    stub: true

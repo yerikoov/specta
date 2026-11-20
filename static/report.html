@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Итог проверки ТЗ</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/tokens.css">
+  <link rel="stylesheet" href="/static/css/chat.css">
+  <style>
+    body { background: var(--s3); }
+    .rp { max-width: 820px; margin: 0 auto; padding: 56px 20px 80px; }
+    .rp-top { display: flex; align-items: center; gap: 10px; color: var(--h); font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+    .rp h1 { font-size: 40px; font-weight: 500; letter-spacing: -.03em; line-height: 1.12; margin-top: 28px; text-wrap: balance; }
+    .rp .meta { color: var(--muted); font-size: 14px; margin-top: 10px; }
+    .rp-card { background: var(--card); border-radius: 22px; padding: 24px; margin-top: 18px; }
+    .rp-score { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+    .rp-score .n { font-size: 64px; font-weight: 300; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
+    .rp-score .before { color: var(--muted); } .rp-score .of { color: var(--muted); font-size: 18px; }
+    .rp-verdict { font-size: 18px; color: var(--h); font-weight: 500; margin-top: 14px; line-height: 1.45; }
+    .rp-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+    .rp-stats div { background: var(--s3); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
+    .rp-stats b { display: block; font-size: 22px; font-weight: 500; color: var(--h); }
+    .rp-stats span { font-size: 12.5px; color: var(--muted); }
+    .rp h2 { font-size: 15px; font-weight: 500; color: var(--muted); margin-bottom: 12px; }
+    .rp li { color: var(--text); font-size: 15px; line-height: 1.55; }
+    .rp .msg-list { gap: 8px; }
+    .rp .risk { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid rgba(255,255,255,.05); }
+    .rp .risk:first-of-type { border-top: 0; }
+    .rp .risk i { width: 7px; height: 7px; border-radius: 50%; background: var(--sev-minor); }
+    .rp .risk i.critical { background: var(--sev-critical); } .rp .risk i.important { background: var(--sev-important); }
+    .rp .risk span { color: var(--text); font-size: 14.5px; } .rp .risk em { color: var(--accent-t); font-style: normal; font-size: 12.5px; }
+    .rp-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+    .rp-actions .btn { height: 42px; padding: 0 18px; border-radius: 12px; }
+    .rp-foot { color: var(--muted); font-size: 12.5px; margin-top: 40px; }
+    .rp-err { color: var(--sec); font-size: 16px; margin-top: 40px; }
+    @media (max-width: 640px) { .rp h1 { font-size: 30px; } .rp-stats { grid-template-columns: 1fr 1fr; } .rp-score .n { font-size: 52px; } }
+  </style>
+</head>
+<body>
+  <main class="rp" id="rp"><div class="rp-top"><span id="logo"></span>Specta</div><p class="rp-err" id="msg">Загружаю отчёт…</p></main>
+  <script type="module">
+    import { blobSVG, setFavicon } from "/static/js/blobs.js";
+    setFavicon();
+    import { dotScoreCard } from "/static/js/dotscore.js";
+    import { escapeHtml as esc } from "/static/js/chain.js";
+    const root = document.getElementById("rp");
+    document.getElementById("logo").innerHTML = blobSVG({ shape: "bumps", color: "#31c943" }, "happy", { size: 22, glow: false });
+    const token = location.pathname.split("/").pop();
+    try {
+      const res = await fetch(`/api/share/${encodeURIComponent(token)}`);
+      if (!res.ok) throw new Error((await res.json()).detail || "Ссылка недействительна");
+      const r = await res.json();
+      const s = r.summary || {};
+      const before = r.score_before?.total ?? "—", after = r.score?.total ?? before;
+      document.title = `Итог проверки — ${r.title || "ТЗ"}`;
+      const list = (xs) => (xs?.length ? `<ul class="msg-list">${xs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "");
+      root.innerHTML = `<div class="rp-top">${document.getElementById("logo").outerHTML}Specta</div>
+        <h1>${esc(s.headline || r.title || "Итог проверки ТЗ")}</h1>
+        <p class="meta">${esc(r.filename || "")}${r.updated_at ? " · " + new Date(r.updated_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" }) : ""}</p>
+        <section class="rp-card">
+          <div class="rp-score"><span class="n before">${before}</span><span class="of">→</span><span class="n">${after}</span><span class="of">/100</span></div>
+          ${s.verdict ? `<p class="rp-verdict">${esc(s.verdict)}</p>` : ""}
+          <div class="rp-stats"><div><b>${r.resolved}</b><span>замечаний исправлено</span></div><div><b>${r.changes}</b><span>правок в ТЗ</span></div>
+            <div><b>${r.tests?.length || 0}</b><span>тест-кейсов</span></div><div><b>${r.open}</b><span>осталось открытых</span></div></div>
+        </section>
+        <div id="dots"></div>
+        ${s.highlights?.length ? `<section class="rp-card"><h2>Что улучшили</h2>${list(s.highlights)}</section>` : ""}
+        <section class="rp-card"><h2>Оставшиеся риски</h2>${r.risks.length ? r.risks.map((x) => `<div class="risk"><i class="${esc(x.severity)}"></i><span>${esc(x.text)}</span>${x.ref ? `<em>п. ${esc(x.ref)}</em>` : ""}</div>`).join("") : `<p class="rp-verdict" style="margin:0;font-size:15px">Открытых рисков нет.</p>`}</section>
+        ${s.next_steps?.length ? `<section class="rp-card"><h2>Следующие шаги</h2>${list(s.next_steps)}</section>` : ""}
+        <div class="rp-actions"><a class="btn btn-primary" href="/api/share/${encodeURIComponent(token)}/export" download>Скачать улучшенное ТЗ (.docx)</a></div>
+        <p class="rp-foot">Отчёт подготовлен командой ИИ-агентов Specta${r.debate ? ` · агенты обсудили ${r.debate} спорных моментов перед выводом` : ""}. Ссылка только для просмотра.</p>`;
+      if (r.score?.criteria) {
+        const card = dotScoreCard({ total: after, prev: null, before: before, criteria: r.score.criteria, before_criteria: r.score_before?.criteria }, "Оценка по критериям");
+        card.style.marginTop = "18px";
+        document.getElementById("dots").appendChild(card);
+      }
+    } catch (e) {
+      document.getElementById("msg").textContent = e.message;
+    }
+  </script>
+</body>
+</html>

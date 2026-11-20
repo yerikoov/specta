@@ -1,0 +1,39 @@
+# docker compose up                      — Claude (ANTHROPIC_API_KEY in .env) or the rule engine without a key
+# docker compose --profile local up      — on-prem: a local model in Ollama, the ТЗ never leaves the network
+#   first time: docker compose exec ollama ollama pull qwen2.5:14b-instruct
+services:
+  specta:
+    build: .
+    ports: ["8000:8000"]
+    env_file:
+      - path: .env
+        required: false
+    volumes: ["specta-data:/app/data"]
+    restart: unless-stopped
+
+  specta-local:
+    profiles: ["local"]
+    build: .
+    ports: ["8001:8000"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      LLM_PROVIDER: local
+      LOCAL_LLM_URL: http://ollama:11434/v1
+      LOCAL_LLM_MODEL: ${LOCAL_LLM_MODEL:-qwen2.5:14b-instruct}
+      WEB_RESEARCH: "0"          # fully closed contour: no internet calls either
+    volumes: ["specta-local-data:/app/data"]
+    depends_on: [ollama]
+    restart: unless-stopped
+
+  ollama:
+    profiles: ["local"]
+    image: ollama/ollama:0.5.7
+    volumes: ["ollama:/root/.ollama"]
+    restart: unless-stopped
+
+volumes:
+  specta-data:
+  specta-local-data:
+  ollama:

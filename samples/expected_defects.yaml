@@ -1,0 +1,30 @@
+# Planted defects in sample_tz_p2p.md.
+# A defect counts as found if some kept finding has the given agent and
+#   - section_ref starting with `ref` (if set), and
+#   - `key` (if set) appearing in finding.key
+defects:
+  - {id: D01, kind: vague, agent: ambiguity, ref: "3.5", key: if_possible, note: "«по возможности» поддерживать карты"}
+  - {id: D02, kind: vague, agent: ambiguity, ref: "4.1", key: fast, note: "«работать быстро»"}
+  - {id: D03, kind: vague, agent: ambiguity, ref: "4.3", key: convenient, note: "«удобным и интуитивно понятным»"}
+  - {id: D04, kind: vague, agent: ambiguity, ref: "6.2", key: asap, note: "«в кратчайшие сроки»"}
+  - {id: D05, kind: vague, agent: ambiguity, ref: "4.5", key: many, note: "«большое количество пользователей»"}
+  - {id: D06, kind: contradiction, agent: contradictions, key: single_limit, note: "200 000 ₸ (3.3) vs 300 000 ₸ (5.1)"}
+  - {id: D07, kind: contradiction, agent: contradictions, key: daily_limit, note: "500 000 ₸ (3.3) vs 1 000 000 ₸ (5.2)"}
+  - {id: D08, kind: contradiction, agent: contradictions, key: otp_ttl, note: "60 с (3.2) vs 5 мин (5.1)"}
+  - {id: D09, kind: contradiction, agent: contradictions, key: fee, note: "0% (3.6) vs 0,5% (7.1)"}
+  - {id: D10, kind: contradiction, agent: contradictions, key: launch_date, note: "01.02.2027 vs 01.04.2027"}
+  - {id: D11, kind: untestable, agent: testability, ref: "4.2", key: reliable, note: "«должна быть надёжной»"}
+  - {id: D12, kind: untestable, agent: testability, ref: "2.3", key: satisfied, note: "«пользователь должен быть доволен»"}
+  - {id: D13, kind: untestable, agent: testability, ref: "4.4", key: always, note: "«доступен всегда»"}
+  - {id: D14, kind: untestable, agent: testability, ref: "2.1", key: goal_no_metric, note: "цель без метрики"}
+  - {id: D15, kind: compliance, agent: regulatory, key: kyc_identification, note: "нет KYC"}
+  - {id: D16, kind: compliance, agent: regulatory, key: aml_monitoring, note: "нет AML-мониторинга"}
+  - {id: D17, kind: compliance, agent: regulatory, key: pd_consent, note: "нет согласия на ПДн"}
+  - {id: D18, kind: compliance, agent: regulatory, key: pci_dss, note: "карты без PCI DSS"}
+  - {id: D19, kind: missing_section, agent: completeness, key: acceptance, note: "нет критериев приёмки"}
+  - {id: D20, kind: missing_section, agent: completeness, key: roles, note: "нет раздела ролей"}
+  - {id: D21, kind: security, agent: security, key: antifraud, note: "нет антифрода"}
+  - {id: D22, kind: integrations, agent: integrations, ref: "3.8", note: "интеграция без протокола/таймаутов"}
+# Must be removed by the Critic (false positive): «быстро — не позднее 30 секунд» in 3.2
+false_positives:
+  - {agent: ambiguity, ref: "3.2", key: fast}
