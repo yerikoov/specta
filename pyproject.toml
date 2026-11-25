@@ -1,0 +1,22 @@
+[project]
+name = "specta"
+version = "1.0.0"
+description = "Specta — ИИ-агент статической проверки требований (ISO/IEC/IEEE 29148, IEEE 830): отчёт по документу одной командой и веб-интерфейс."
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[project.scripts]
+specta = "app.cli:main"
+
+[tool.setuptools]
+packages = ["app", "app.agents", "app.review"]
+
+[tool.setuptools.package-data]
+"app.review" = ["term_art/*/*.ans"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

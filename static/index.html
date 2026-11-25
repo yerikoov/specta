@@ -55,7 +55,7 @@
     <section class="section" id="coverage">
       <h2 data-i18n="cov.title"></h2>
       <p class="lead" data-i18n="cov.sub"></p>
-      <div class="api" id="covList"></div>
+      <div class="reg" id="covList"></div>
     </section>
 
     <section class="section">
@@ -71,15 +71,15 @@
 
     <footer class="foot">
       <div class="nav__brand"><span class="brand-logo" id="brandLogo2"></span><span data-product></span></div>
-      <div class="foot__mid" data-i18n="footer.note"></div>
-      <div class="foot__right" id="footerMode"></div>
+      <div class="foot__mid" data-i18n="footer.team"></div>
+      <div class="foot__right" data-i18n="footer.copy"></div>
     </footer>
   </div>
 
   <!-- APP SHELL: sidebar + dashboard home (signed-in) -->
   <aside class="sb" id="sidebar" aria-label="Навигация"></aside>
   <div id="dash" class="screen"><div class="dh" id="dashHome"></div></div>
-  <input type="file" id="fileInput" accept=".docx,.pdf,.txt,.md" hidden>
+  <input type="file" id="fileInput" accept=".docx,.pdf,.txt,.md" multiple hidden>
   <div class="drop-overlay" id="dropOverlay"><div><span data-icon="upload" data-size="22"></span><span data-i18n="hero.dropNow"></span></div></div>
 
   <!-- SCREEN 2: LOADING (thought chain) -->
@@ -118,7 +118,7 @@
 
         <main class="chat-stream" id="stream" aria-live="polite">
           <div class="stream-inner" id="streamInner"></div>
-          <div class="typing" id="typing" hidden><span></span><span></span><span></span></div>
+          <div class="typing" id="typing" hidden aria-hidden="true"><span class="typing-face"></span><span class="typing-line"></span></div>
         </main>
 
         <div class="composer-wrap">

@@ -11,10 +11,10 @@ Cost controls:
     uses the same model re-reads it at ~10% of the input price;
   * structured outputs (validated Pydantic) — no retries on broken JSON;
   * a hard per-check call budget (LLM_MAX_CALLS) and a spend meter per check.
-Providers (LLM_PROVIDER): anthropic (Claude, default when ANTHROPIC_API_KEY is set) · local (any
-OpenAI-compatible on-prem server, see app.local_llm — the TZ never leaves the bank) · rules (no model at all).
-Without a key and without a local server the app runs on the rule engine only (no network).
-Personal data (ИИН, phones, cards, IBAN, e-mail) is masked before anything is sent to a cloud model (app.pii).
+Providers (LLM_PROVIDER): anthropic (Claude, official SDK) · gemini · openai · deepseek · custom (any
+OpenAI-compatible API) — see app.openai_compat · rules (no model at all). `auto` takes the first provider whose
+key is in .env; without any key the app runs on the rule engine only.
+Personal data (ИИН, phones, cards, IBAN, e-mail) is masked before anything is sent to the model (app.pii).
 """
 from __future__ import annotations
 
@@ -35,9 +35,9 @@ T = TypeVar("T", bound=BaseModel)
 Tier = Literal["fast", "strong", "lead"]
 
 MODELS = {
-    "fast": os.getenv("LLM_MODEL_FAST", "claude-haiku-5-5"),
-    "strong": os.getenv("LLM_MODEL_STRONG", "claude-sonnet-5-5"),
-    "lead": os.getenv("LLM_MODEL_LEAD", "claude-opus-5-5"),
+    "fast": os.getenv("CLAUDE_MODEL_FAST", os.getenv("LLM_MODEL_FAST", "claude-haiku-5-5")),
+    "strong": os.getenv("CLAUDE_MODEL_STRONG", os.getenv("LLM_MODEL_STRONG", "claude-sonnet-5-5")),
+    "lead": os.getenv("CLAUDE_MODEL_LEAD", os.getenv("LLM_MODEL_LEAD", "claude-opus-5-5")),
 }
 EFFORT = {"fast": "low", "strong": "medium", "lead": "low"}
 # $ per 1M tokens: input, output (cache read = 10% of input, cache write = 125%)
@@ -66,30 +66,29 @@ CACHE_TTL = float(os.getenv("CACHE_TTL_DAYS", "30")) * 86400
 
 class LLM:
     def __init__(self) -> None:
+        from . import openai_compat as oc
         key = os.getenv("ANTHROPIC_API_KEY", "")
         want = os.getenv("LLM_PROVIDER", "auto").lower()
-        if want in ("rules", "mock", "off", "none"):
-            want = "rules"
-        elif want == "auto":
-            want = "anthropic" if key else ("local" if os.getenv("LOCAL_LLM_URL") else "rules")
+        want = {"claude": "anthropic", "mock": "rules", "off": "rules", "none": "rules"}.get(want, want)
+        if want == "auto":      # the first provider whose key is in .env
+            want = "anthropic" if key else next((p for p in ("gemini", "openai", "deepseek", "custom") if oc.configured(p)), "rules")
         self.models = dict(MODELS)
         self.client = None
         if want == "anthropic" and key:
             self.client = anthropic.AsyncAnthropic(api_key=key, timeout=float(os.getenv("LLM_TIMEOUT", "90")), max_retries=2)
-        elif want == "local":
-            from . import local_llm
-            self.client = local_llm.client()
-            self.models = local_llm.models()
+        elif want in oc.PROVIDERS and oc.configured(want):
+            self.client = oc.client(want)
+            self.models = oc.models(want)
         self.provider = want if self.client else "rules"
         self.max_calls = int(os.getenv("LLM_MAX_CALLS", "24"))
         self.delay_scale = float(os.getenv("DEMO_DELAY_SCALE", os.getenv("MOCK_DELAY_SCALE", "1.0")))
 
     @property
     def engine(self) -> str:
-        """claude | local | rules — what the UI and the trace show."""
+        """claude | gemini | openai | deepseek | custom | rules — what the report, UI and trace show."""
         if self.client is None:
             return "rules"
-        return "local" if self.provider == "local" else "claude"
+        return "claude" if self.provider == "anthropic" else self.provider
 
     @property
     def mock(self) -> bool:
@@ -132,7 +131,7 @@ class LLM:
         read_urls: list[str] = []
         # personal data is replaced by tokens before anything goes to a cloud model, and restored in the answer
         from .pii import Masker, enabled as pii_on
-        pm = Masker() if self.provider == "anthropic" and pii_on() else None
+        pm = Masker() if pii_on() else None             # every provider is a cloud API
         if pm:
             system, user, doc = pm.mask(system), pm.mask(user), pm.mask(doc)
         sys_blocks = []
@@ -225,7 +224,7 @@ class LLM:
     def _account(self, model: str, usage, agent: str = "", purpose: str = "", ms: float = 0, spent: dict | None = None) -> None:
         if usage is None:
             return
-        pin, pout = PRICES.get(model, (0.0, 0.0) if self.provider == "local" else (4.0, 20.0))   # on-prem: free
+        pin, pout = PRICES.get(model, (0.0, 0.0))      # spend is tracked for Claude; other providers show tokens only
         inp = usage.input_tokens or 0
         read = getattr(usage, "cache_read_input_tokens", 0) or 0
         write = getattr(usage, "cache_creation_input_tokens", 0) or 0

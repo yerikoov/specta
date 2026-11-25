@@ -1,6 +1,7 @@
 // Group chat of sub-agents. Renders ONLY the unified event schema — no agent-specific code.
 import { api } from "./api.js";
 import { blobSVG, setEmotion } from "./blobs.js";
+import { richText } from "./richtext.js";
 import { escapeHtml as esc } from "./chain.js";
 import { createDocPanel } from "./docpanel.js";
 import { icon } from "./icons.js";
@@ -9,7 +10,7 @@ import { auditItemHtml, auditLogHtml, refreshAuditLog, wireAuditLogs } from "./a
 import { t } from "./i18n.js";
 
 // few, calm entry points: the score lives in the header pill, a new upload is the back arrow
-const PILLS = [["findings", "list"], ["improve", "sparkles"], ["tests", "flask"], ["report", "download"]];
+const PILLS = [["findings", "list"], ["improve", "sparkles"], ["tests", "flask"], ["iso", "file"], ["report", "download"]];
 const PIPELINE = ["dispatcher", "critic", "clarifier", "reporter"];
 
 export function createChat({ sid, agentsById, title, onHome, toast }) {
@@ -33,7 +34,9 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
   const qcards = new Map();
   const fidToQ = new Map();
   const headerAv = new Map();
-  let last = null, lastScore = null, scoreCount = 0, es = null, closed = false;
+  let last = null, lastScore = null, scoreCount = 0, es = null, closed = false, flight = false, flightWho = null;
+  let syncSend = () => {};
+  const COMMAND_WHO = { findings: "critic", start: "clarifier", questions: "clarifier", improve: "dispatcher", tests: "testability", score: "critic", report: "reporter" };
 
   // ---------------------------------------------------------------- helpers
   // follow new messages unless the user scrolled up to read
@@ -52,7 +55,56 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
   };
   const time = (ts) => new Date(ts * 1000).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
   const agent = (id) => agentsById[id] || { id, name: id, role: "", shape: "cloud", color: "#a48bff" };
-  const setTyping = (on) => { typing.hidden = !on; if (on) scrollDown(); };
+  const setTyping = (on, who = null, canStop = false) => {
+    if (on) {
+      const id = who || flightWho || "dispatcher";
+      if (canStop) { flight = true; flightWho = id; }
+      const a = agent(id);
+      typing.querySelector(".typing-face").innerHTML = blobSVG(a, "thinking", { size: 28, glow: false, live: true });
+      const line = typing.querySelector(".typing-line");
+      const text = t("chat.thinking", { name: a.name || "Агент" });
+      line.textContent = text;
+      line.style.setProperty("--spread", `${Math.max(text.length, 8) * 2}px`);
+      typing.setAttribute("aria-hidden", "false");
+    } else {
+      flight = false;
+      flightWho = null;
+      typing.setAttribute("aria-hidden", "true");
+    }
+    typing.hidden = !on;
+    syncSend();
+    if (on) scrollDown();
+  };
+  // data.busy: the agent has said it is working and the result is still coming.
+  // The mark is delayed so a replayed history does not flash the animation between two events.
+  let workToken = 0;
+  const isPending = (ev) => ev.type === "status" && ev.data?.busy && !ev.data?.in;
+  const settleWork = () => {
+    workToken++;
+    inner.querySelectorAll(".msg.is-working").forEach((el) => {
+      el.classList.remove("is-working");
+      el.removeAttribute("aria-busy");
+      const blob = el.querySelector(".msg-avatar .blob");
+      blob?.classList.remove("live");
+      if (blob && el.dataset.rest) setEmotion(blob, el.dataset.rest);
+    });
+  };
+  const armWork = (el, ev) => {
+    const token = ++workToken;
+    setTimeout(() => {
+      if (token !== workToken || !el.isConnected) return;
+      el.classList.add("is-working");
+      el.setAttribute("aria-busy", "true");
+      const blob = el.querySelector(".msg-avatar .blob");
+      if (blob) {
+        el.dataset.rest = blob.dataset.emotion || ev.emotion || "curious";
+        blob.classList.add("live");
+        setEmotion(blob, "thinking");
+      }
+      el.querySelectorAll(".msg-text p").forEach((p) => p.style.setProperty("--spread", `${Math.max(p.textContent.length, 8) * 2}px`));
+      scrollDown();
+    }, 140);
+  };
 
   function ensureHeaderAvatar(id, emo = "neutral") {
     if (headerAv.has(id)) return headerAv.get(id);
@@ -289,7 +341,9 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
   const R = {
     status(ev) {
       const d = ev.data || {};
-      const el = shell(ev, `<div class="msg-text">${esc(ev.text)}</div>${list(d.items)}${testsHtml(d.tests, true)}${d.group ? groupHtml(d.group) : ""}${d.log?.length ? `<div class="mcard logcard">${auditLogHtml(d.log, { filters: d.log.length > 3 })}</div>` : ""}${actionsHtml(d.actions)}`);
+      const pending = isPending(ev);
+      const el = shell(ev, `<div class="msg-text rt">${richText(ev.text)}</div>${list(d.items)}${testsHtml(d.tests, true)}${d.group ? groupHtml(d.group) : ""}${d.log?.length ? `<div class="mcard logcard">${auditLogHtml(d.log, { filters: d.log.length > 3 })}</div>` : ""}${actionsHtml(d.actions)}`);
+      if (pending) armWork(el, ev);
       el.querySelectorAll(".al").forEach(refreshAuditLog);
       if (d.group) registerGroup(el, d.group);
       if (d.team) {
@@ -356,6 +410,7 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
       return shell(ev, `<div class="mcard dcard">
         <div class="msg-text">${esc(ev.text)}</div>
         <div class="d-ba"><span class="n before">${d.before.total}</span>${icon("arrow-right", 20)}<span class="n after">${d.after.total}</span><span class="of">/100</span></div>
+        ${d.effect ? effectHtml(d.effect) : ""}
         ${barsHtml(d.after.criteria, d.before.criteria)}
         ${testsHtml(d.tests)}
         ${d.summary ? `<div class="d-sum"><div class="d-sum-h">${esc(d.summary.headline)}</div><p>${esc(d.summary.verdict)}</p>
@@ -366,6 +421,17 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
       </div>`);
     },
   };
+
+  // business effect of the check: what was caught before development, time, cost, quality
+  function effectHtml(e) {
+    const tile = (b, l) => `<div class="ef-t"><b>${b}</b><span>${l}</span></div>`;
+    const cost = e.cost_kzt ? `${e.cost_kzt} ₸` : "0 ₸";
+    return `<div class="effect"><div class="ef-h">${t("eff.title")}</div>
+      <div class="ef-grid">${tile(e.defects, t("eff.defects"))}${tile(`≈ ${String(e.hours).replace(".", ",")} ч`, t("eff.hours"))}
+        ${tile(cost, t("eff.cost"))}${tile(`${e.before} → ${e.after}`, t("eff.quality"))}</div>
+      <div class="ef-break">${t("eff.break", { c: e.critical, x: e.contradictions, k: e.compliance })}</div>
+      <div class="ef-note">${t("eff.note", { m: e.min_per_issue })}</div></div>`;
+  }
 
   function updatePill(total, prev) {
     pill.querySelector(".sp-num").textContent = total;
@@ -391,7 +457,7 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
       card.classList.add("is-busy");
       btn?.classList.add("is-chosen");
       stick = true;  // answering means "show me what happens next"
-      setTyping(true);
+      setTyping(true, card.closest(".msg")?.dataset.agent, true);
       try { await api.answer(sid, { question_id: qid, ...body }); }
       catch (e) { toast(e.message, "error"); reopen(card); setTyping(false); }
     };
@@ -406,11 +472,11 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
       ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } });
     }
     card.querySelector(".q-skip")?.addEventListener("click", async () => {
-      card.classList.add("is-busy"); stick = true; setTyping(true);
+      card.classList.add("is-busy"); stick = true; setTyping(true, card.closest(".msg")?.dataset.agent, true);
       try { await api.message(sid, qid, "skip"); } catch (e) { toast(e.message, "error"); card.classList.remove("is-busy"); setTyping(false); }
     });
     card.querySelector(".q-undo").addEventListener("click", async () => {
-      try { await api.undo(sid, qid); setTyping(true); } catch (e) { toast(e.message, "error"); }
+      try { await api.undo(sid, qid); setTyping(true, card.closest(".msg")?.dataset.agent, true); } catch (e) { toast(e.message, "error"); }
     });
   }
 
@@ -449,7 +515,10 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
   function handle(ev) {
     if (seen.has(ev.id)) return;
     seen.add(ev.id);
-    setTyping(false);
+    inner.querySelectorAll(".msg--user[data-pending]").forEach((el) => el.removeAttribute("data-pending"));
+    const keep = flight && !!(ev.data?.working || ev.data?.busy);
+    if (!keep) setTyping(false);
+    settleWork();
     const r = R[ev.type];
     if (!r) return;
     const force = nearBottom();
@@ -481,8 +550,33 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
   const refresh = () => {
     const txt = getText();
     input.classList.toggle("is-empty", !txt.trim() && !input.querySelector(".agent-chip"));
-    send.disabled = !txt.trim();
+    if (!flight) send.disabled = !txt.trim();
   };
+  syncSend = () => {
+    send.classList.toggle("is-stop", flight);
+    send.disabled = flight ? false : !getText().trim();
+    send.setAttribute("aria-label", flight ? t("chat.stop") : "Отправить");
+    send.innerHTML = icon(flight ? "square" : "arrow-up", 16);
+  };
+  const mentionedId = (text) => {
+    const chip = tagged()[0];
+    if (chip) return chip;
+    const m = /@([А-Яа-яЁёA-Za-z]+)/.exec(text || "");
+    if (!m) return null;
+    const q = m[1].toLowerCase();
+    return Object.values(agentsById).find((a) => a.name.toLowerCase() === q)?.id || null;
+  };
+  async function stopFlight() {
+    if (!flight) return;
+    const bubbles = [...inner.querySelectorAll(".msg--user[data-pending]")];
+    bubbles.forEach((el) => el.remove());
+    setTyping(false);
+    try { await api.cancel(sid); }
+    catch (err) {
+      bubbles.forEach((el) => inner.appendChild(el));
+      toast(err.message, "error");
+    }
+  }
   const clear = () => { input.innerHTML = ""; refresh(); };
   input.dataset.placeholder = t("chat.placeholder");
   const pop = form.querySelector(".mention-pop") || form.appendChild(Object.assign(document.createElement("div"), { className: "mention-pop", role: "listbox" }));
@@ -552,22 +646,25 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
       }
       if ((e.key === "Enter" || e.key === "Tab") && !e.isComposing) { e.preventDefault(); pickMention(mIdx); return; }
     }
-    if (e.key === "Escape") { pop.hidden = true; return; }
+    if (e.key === "Escape") { if (!pop.hidden) { pop.hidden = true; return; } if (flight) { e.preventDefault(); stopFlight(); } return; }
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
   };
   refresh();
   form.onsubmit = async (e) => {
     e.preventDefault();
+    if (flight) { stopFlight(); return; }
     const text = getText().replace(/\s+\n/g, "\n").trim();
     if (!text) return;
-    clear(); send.disabled = true;
+    const who = mentionedId(text);
+    clear();
     userBubble(text);
-    setTyping(true);
+    setTyping(true, who, true);
     try { await api.message(sid, text); } catch (err) { toast(err.message, "error"); setTyping(false); }
   };
   function userBubble(text) {
     const el = document.createElement("div");
     el.className = "msg msg--user";
+    el.dataset.pending = "1";
     const byName = Object.fromEntries(Object.values(agentsById).map((a) => [a.name.toLowerCase(), a]));
     const html = esc(text).replace(/@([А-Яа-яЁёA-Za-z]+)/g, (m, n) => (byName[n.toLowerCase()] ? chipHtml(byName[n.toLowerCase()]) : m));
     el.innerHTML = `<div class="user-bubble">${html}</div>`;
@@ -581,7 +678,7 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
     attachInput.value = "";
     if (!f) return;
     userBubble(`📎 ${f.name}`);
-    setTyping(true);
+    setTyping(true, "parser", true);
     try { await api.attach(sid, f); } catch (err) { toast(err.message, "error"); setTyping(false); }
   };
 
@@ -594,9 +691,30 @@ export function createChat({ sid, agentsById, title, onHome, toast }) {
   async function command(cmd, label) {
     if (cmd === "new") return onHome();
     if (cmd === "report") { window.location.href = api.exportUrl(sid, "md", "report"); return; }
+    if (cmd === "iso") return isoReport();
     if (label) userBubble(label);
-    setTyping(true);
+    setTyping(true, COMMAND_WHO[cmd] || "dispatcher", true);
     try { await api.message(sid, "", cmd); } catch (err) { toast(err.message, "error"); setTyping(false); }
+  }
+
+  // the same static review as `specta check`: ISO/IEC/IEEE 29148 + IEEE 830 report file
+  let isoBusy = false;
+  async function isoReport() {
+    if (isoBusy) return;
+    isoBusy = true;
+    const pill = document.querySelector('.pill[data-cmd="iso"]');
+    pill?.classList.add("is-loading");
+    toast(t("iso.wait"), "info");
+    try {
+      const r = await fetch(api.withKey(`/api/review/${sid}/standard`));
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+      const name = (r.headers.get("Content-Disposition") || "").match(/filename="(.+?)"/)?.[1] || "review_iso29148.md";
+      const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(await r.blob()), download: name });
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      toast(t("iso.done"), "success");
+    } catch (err) { toast(err.message, "error"); }
+    finally { isoBusy = false; pill?.classList.remove("is-loading"); }
   }
 
   // ---------------------------------------------------------------- stream

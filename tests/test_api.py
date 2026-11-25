@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -50,3 +51,17 @@ def test_history_share_and_stream_key():
     assert pub["summary"]["headline"] and pub["score"]["total"] > pub["score_before"]["total"]
     assert client.get(f"/api/share/{tok}/export").content[:2] == b"PK"
     assert s.debate, "agents must discuss doubtful findings"
+
+
+def test_upload_with_appendices():
+    from app.agents.base import doc_for_prompt
+    tz = (Path(__file__).resolve().parent.parent / "samples" / "test_tz_bnpl.md").read_bytes()
+    api_spec = "# Спецификация API\n1. POST /installments — создать рассрочку, таймаут 5 с.\n".encode()
+    r = client.post("/api/upload", files=[("file", ("tz.md", tz, "text/markdown")),
+                                          ("extra", ("api.md", api_spec, "text/markdown"))])
+    assert r.status_code == 200 and r.json()["appendix"] == 1
+    s = get_session(r.json()["session_id"])
+    assert s.doc.appendix[0].startswith("[api.md]") and "POST /installments" in doc_for_prompt(s.doc)
+    assert not any("installments" in (x.text or "") for x in s.doc.sections)     # appendix is not part of the TZ
+    bad = client.post("/api/upload", files=[("file", ("tz.md", tz, "text/markdown")), ("extra", ("x.exe", b"MZ", "application/x"))])
+    assert bad.status_code == 400 and "x.exe" in bad.json()["detail"]

@@ -54,7 +54,6 @@ export async function openTrace(sid, agentsById) {
       <div><b>${T.rule_passes}</b><span>${t("trace.passes")}</span></div><div><b>${usd(T.usd)}</b><span>${t("trace.cost")}</span></div></div>
     ${cache}
     ${T.pii_masked ? `<div class="tr-note saved">${icon("lock", 15)}<span>${t("trace.pii", { n: T.pii_masked })}</span></div>` : ""}
-    ${d.engine === "local" ? `<div class="tr-note saved">${icon("lock", 15)}<span>${t("trace.local")}</span></div>` : ""}
     ${T.cache_hits ? `<div class="tr-note saved">${icon("check", 15)}<span>${t("trace.savedNote", { n: T.cache_hits, usd: usd(T.saved_usd) })}</span></div>` : ""}
     ${models ? `<div class="tr-h">${t("trace.byModel")}</div><div class="tr-models">${models}</div>` : ""}
     <div class="tr-h">${t("trace.timeline")}</div><div class="tr-list">${rows || `<div class="trace-empty">${t("trace.empty")}</div>`}</div>`;

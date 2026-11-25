@@ -7,6 +7,7 @@ import { runChain } from "./chain.js";
 import { createChat } from "./chat.js";
 import { PRODUCT_NAME } from "./config.js";
 import { createDashboard } from "./dashboard.js";
+import { filesModalOpen, pickFiles } from "./filesmodal.js";
 import { applyI18n, t } from "./i18n.js";
 import { hydrateIcons } from "./icons.js";
 import { renderLanding } from "./landing.js";
@@ -55,7 +56,15 @@ async function goLanding(replace = false) {
   await show("landing");
 }
 
-async function start({ file = null, sample = false, home = false } = {}) {
+/** Files picked or dropped on the dashboard → «Это всё или есть ещё файлы?» → upload. */
+async function chooseFiles(list) {
+  const fs = [...list];
+  if (!fs.length || busy) return;
+  const picked = await pickFiles(fs);
+  if (picked) start({ file: picked.main, extras: picked.extras });
+}
+
+async function start({ file = null, extras = [], sample = false, home = false } = {}) {
   if (home) return goDash();
   if (busy) return;
   try { await requireAuth(); } catch { return; }   // checks are saved to the user's account
@@ -64,9 +73,9 @@ async function start({ file = null, sample = false, home = false } = {}) {
   if (err) err.hidden = true;
   if (file && !/\.(docx|pdf|txt|md)$/i.test(file.name)) { if (err) { err.textContent = t("err.format"); err.hidden = false; } return; }
   busy = true;
-  dash.busy(true);
+  dash.busy(true, sample ? null : file?.name, extras.length);
   try {
-    const r = await api.upload(file, $("ctxInput")?.value || "", sample);
+    const r = await api.upload(file, $("ctxInput")?.value || "", sample, extras);
     go(`${DASH}#s=${r.session_id}`, true);
     dash.refresh().then(() => dash.setActive(r.session_id));
     await show("loading");
@@ -104,7 +113,7 @@ async function reopen(sid) {
 function wire() {
   const fileInput = $("fileInput");
   const overlay = $("dropOverlay");
-  const canDrop = () => $("dash").classList.contains("is-active");
+  const canDrop = () => $("dash").classList.contains("is-active") && !filesModalOpen() && !busy;
   document.addEventListener("click", (e) => {
     const a = e.target.closest("[data-action]");
     if (!a) return;
@@ -120,7 +129,7 @@ function wire() {
     else if (act === "attach") $("attachInput").click();
     else if (act === "cmd") chat?.command(a.dataset.cmd);
   });
-  fileInput.addEventListener("change", () => { const f = fileInput.files[0]; fileInput.value = ""; if (f) start({ file: f }); });
+  fileInput.addEventListener("change", () => { const fs = [...fileInput.files]; fileInput.value = ""; chooseFiles(fs); });
   // drop a TZ anywhere on the dashboard home
   let depth = 0;
   document.addEventListener("dragenter", (e) => { if (!canDrop() || !e.dataTransfer?.types?.includes("Files")) return; depth++; overlay.classList.add("is-on"); });
@@ -128,8 +137,8 @@ function wire() {
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => {
     e.preventDefault(); depth = 0; overlay.classList.remove("is-on");
-    const f = e.dataTransfer?.files?.[0];
-    if (f && canDrop()) start({ file: f });
+    const fs = e.dataTransfer?.files;
+    if (fs?.length && canDrop()) chooseFiles(fs);
   });
 }
 
@@ -147,8 +156,6 @@ async function init() {
     renderLanding(agents);
     initGaze();
     hydrateIcons();
-    $("footerMode").textContent = cfg.engine === "claude" ? t("footer.live", { models: "Haiku · Sonnet · Opus" })
-      : cfg.engine === "local" ? t("footer.local", { model: cfg.models?.fast || "" }) : "";
   } catch (e) { toast(t("err.network"), "error"); }
   dash = createDashboard({ agentsById, toast, onOpen: reopen, onStart: start, onLanding: () => goLanding(), onLogout: () => goLanding() });
   api.onAuth((u) => { if (!u && document.body.classList.contains("in-app")) goLanding(true); });

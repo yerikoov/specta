@@ -50,7 +50,10 @@ def doc_for_prompt(doc: Document, limit: int = 24000) -> str:
     lines = []
     for s in doc.sections:
         lines.append(f"[п. {s.ref}] {s.title}".rstrip() + (f"\n{s.text}" if s.text else ""))
-    return "\n".join(lines)[:limit]
+    body = "\n".join(lines)[:limit]
+    if doc.appendix and len(body) < limit:   # appendices: context for the agents, not part of the TZ itself
+        body += "\n\n=== ПРИЛОЖЕНИЯ (не часть ТЗ, только справка; цитаты бери из ТЗ выше) ===\n" + "\n\n".join(doc.appendix)
+    return body[:limit]
 
 
 class BaseAgent:

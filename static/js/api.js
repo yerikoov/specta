@@ -54,9 +54,10 @@ export const api = {
   config: () => fetch("/api/config").then(json),
   agents: () => fetch("/api/agents").then(json),
   // ---- checks
-  upload(file, context = "", sample = false) {
+  upload(file, context = "", sample = false, extras = []) {
     const fd = new FormData();
     if (file) fd.append("file", file);
+    for (const f of extras) fd.append("extra", f);
     fd.append("sample", sample ? "true" : "false");
     fd.append("context", context);
     return call("/api/upload", { method: "POST", body: fd }).then(remember);
@@ -68,6 +69,7 @@ export const api = {
   answer: (sid, body) => post(`/api/chat/${sid}/answer`, body),
   undo: (sid, question_id) => post(`/api/chat/${sid}/undo`, { question_id }),
   message: (sid, text, command = null) => post(`/api/chat/${sid}/message`, { text, command }),
+  cancel: (sid) => post(`/api/chat/${sid}/cancel`, {}),
   attach(sid, file) {
     const fd = new FormData();
     fd.append("file", file);

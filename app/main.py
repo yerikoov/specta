@@ -34,12 +34,44 @@ ALLOWED = {".docx", ".pdf", ".txt", ".md", ".markdown"}
 
 app = FastAPI(title="TZ agents", version="1.0")
 _bg: set[asyncio.Task] = set()
+_actions: dict[str, set[asyncio.Task]] = {}
 
 
 def spawn(coro) -> None:
     t = asyncio.create_task(coro)
     _bg.add(t)
     t.add_done_callback(_bg.discard)
+
+
+def track(sid: str, coro) -> None:
+    """A user action that «Остановить» is allowed to cancel. Analysis stays on spawn."""
+    t = asyncio.create_task(coro)
+    _bg.add(t)
+    _actions.setdefault(sid, set()).add(t)
+
+    def _done(task: asyncio.Task, sid: str = sid) -> None:
+        _bg.discard(task)
+        group = _actions.get(sid)
+        if not group:
+            return
+        group.discard(task)
+        if not group:
+            _actions.pop(sid, None)
+
+    t.add_done_callback(_done)
+
+
+def _speaker(s: Session, text: str, command: str | None) -> str:
+    if command == "skip":
+        q = s.question((text or "").strip())
+        return q.agent if q else "clarifier"
+    if command:
+        return {
+            "findings": "critic", "start": "clarifier", "questions": "clarifier",
+            "improve": "dispatcher", "tests": "testability", "score": "critic", "report": "reporter",
+        }.get(command, "dispatcher")
+    ids = orchestrator.mentioned_agents(text or "")
+    return ids[0] if ids else "dispatcher"
 
 
 # ------------------------------------------------------------------ auth
@@ -222,27 +254,46 @@ def agents():
 
 
 # ------------------------------------------------------------------ upload / analyze
+MAX_EXTRA = 5
+
+
+async def _read_upload(file: UploadFile) -> tuple[str, bytes]:
+    name = file.filename or "tz.txt"
+    if Path(name).suffix.lower() not in ALLOWED:
+        raise HTTPException(400, f"«{name}»: поддерживаются .docx, .pdf, .txt, .md")
+    data = await file.read()
+    if len(data) > MAX_UPLOAD:
+        raise HTTPException(413, f"«{name}» больше 15 МБ")
+    return name, data
+
+
 @app.post("/api/upload")
-async def upload(file: Optional[UploadFile] = File(None), sample: bool = Form(False), context: str = Form(""),
-                 user: dict = Depends(current_user)):
+async def upload(file: Optional[UploadFile] = File(None), extra: list[UploadFile] = File(default=[]),
+                 sample: bool = Form(False), context: str = Form(""), user: dict = Depends(current_user)):
+    """The TZ (`file`) plus up to 5 extra files (`extra`: appendices, API spec, regulator requirements).
+    Appendices are read by the agents together with the TZ but are not edited or scored themselves."""
     if sample or file is None:
         name, data = SAMPLE.name, SAMPLE.read_bytes()
     else:
-        name = file.filename or "tz.txt"
-        if Path(name).suffix.lower() not in ALLOWED:
-            raise HTTPException(400, "Поддерживаются .docx, .pdf, .txt, .md")
-        data = await file.read()
-        if len(data) > MAX_UPLOAD:
-            raise HTTPException(413, "Файл больше 15 МБ")
+        name, data = await _read_upload(file)
+    if len(extra) > MAX_EXTRA:
+        raise HTTPException(400, f"Не больше {MAX_EXTRA} дополнительных файлов")
     try:
         doc = parse_bytes(name, data)
     except Exception as e:
         raise HTTPException(400, f"Не удалось прочитать файл: {e}")
     if not doc.sections:
         raise HTTPException(400, "В документе не найдено текста")
+    for f in extra:
+        ename, edata = await _read_upload(f)
+        try:
+            doc.appendix.append(f"[{ename}]\n{parse_bytes(ename, edata).full_text()}")
+        except Exception as e:
+            raise HTTPException(400, f"Не удалось прочитать «{ename}»: {e}")
     s = create_session(doc, context.strip()[:1000], user_id=user["id"])
     await save_now(s)
-    return {"session_id": s.id, "title": doc.title, "filename": doc.filename, "stream_key": s.stream_key}
+    return {"session_id": s.id, "title": doc.title, "filename": doc.filename, "stream_key": s.stream_key,
+            "appendix": len(doc.appendix)}
 
 
 @app.get("/api/analyze/{sid}/stream")
@@ -283,7 +334,8 @@ async def chat_answer(sid: str, body: AnswerIn, s: Session = Depends(need)):
         raise HTTPException(404, "Вопрос не найден")
     if q.status == "answered":
         raise HTTPException(409, "На вопрос уже ответили")
-    spawn(_safe(s, orchestrator.answer(s, body.question_id, body.choice_key, body.custom_text)))
+    s.pending_agent = q.agent
+    track(sid, _safe(s, orchestrator.answer(s, body.question_id, body.choice_key, body.custom_text)))
     return {"ok": True}
 
 
@@ -292,7 +344,8 @@ async def chat_undo(sid: str, body: UndoIn, s: Session = Depends(need)):
     q = s.question(body.question_id)
     if not q or q.status != "answered":
         raise HTTPException(409, "Нечего отменять")
-    spawn(_safe(s, orchestrator.undo_answer(s, body.question_id)))
+    s.pending_agent = q.agent
+    track(sid, _safe(s, orchestrator.undo_answer(s, body.question_id)))
     return {"ok": True}
 
 
@@ -300,7 +353,8 @@ async def chat_undo(sid: str, body: UndoIn, s: Session = Depends(need)):
 async def chat_message(sid: str, body: MessageIn, s: Session = Depends(need)):
     if not body.command and not body.text.strip():
         raise HTTPException(400, "Пустое сообщение")
-    spawn(_safe(s, orchestrator.handle_message(s, body.text[:4000], body.command)))
+    s.pending_agent = _speaker(s, body.text, body.command)
+    track(sid, _safe(s, orchestrator.handle_message(s, body.text[:4000], body.command)))
     return {"ok": True}
 
 
@@ -314,7 +368,16 @@ async def chat_attach(sid: str, file: UploadFile = File(...), s: Session = Depen
         extra = parse_bytes(name, data)
     except Exception as e:
         raise HTTPException(400, f"Не удалось прочитать файл: {e}")
-    spawn(_safe(s, orchestrator.handle_attachment(s, name, extra.full_text(), len(extra.sections))))
+    s.pending_agent = "parser"
+    track(sid, _safe(s, orchestrator.handle_attachment(s, name, extra.full_text(), len(extra.sections))))
+    return {"ok": True}
+
+
+@app.post("/api/chat/{sid}/cancel")
+async def chat_cancel(sid: str, s: Session = Depends(need)):
+    s.cancel_token = getattr(s, "cancel_token", 0) + 1
+    for t in list(_actions.get(sid, ())):
+        t.cancel()
     return {"ok": True}
 
 
@@ -322,14 +385,26 @@ async def _safe(s: Session, coro):
     from .models import Event
     meter.set(s.usage)
     trace.set(s.trace)
-    async with s.lock:
+    try:
+        async with s.lock:
+            try:
+                return await coro
+            except orchestrator.AnswerError as e:
+                await s.emit(Event(agent="clarifier", type="status", emotion="sad", text=str(e)))
+            except Exception as e:  # never kill the chat
+                logging.exception("chat action failed")
+                await s.emit(Event(agent="dispatcher", type="status", emotion="sad", text=f"Ошибка: {e}"))
+    except asyncio.CancelledError:
+        token = getattr(s, "cancel_token", None)
+        if getattr(s, "_stopped_token", None) == token and token is not None:
+            return
+        s._stopped_token = token
+        who = getattr(s, "pending_agent", None) or "dispatcher"
         try:
-            return await coro
-        except orchestrator.AnswerError as e:
-            await s.emit(Event(agent="clarifier", type="status", emotion="sad", text=str(e)))
-        except Exception as e:  # never kill the chat
-            logging.exception("chat action failed")
-            await s.emit(Event(agent="dispatcher", type="status", emotion="sad", text=f"Ошибка: {e}"))
+            async with s.lock:
+                await s.emit(Event(agent=who, type="status", emotion="neutral", text="Остановил."))
+        except asyncio.CancelledError:
+            return
 
 
 # ------------------------------------------------------------------ document / report
@@ -398,6 +473,18 @@ async def report_export(sid: str, format: str = "md", kind: str = "tz", k: str =
     body = export.report_md(s) if kind == "report" else export.improved_md(s)
     return Response(body, media_type="text/markdown; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{base}.md"'})
+
+
+@app.get("/api/review/{sid}/standard")
+async def standard_review(sid: str, k: str = ""):
+    """The same static review as `specta check` (ISO/IEC/IEEE 29148, IEEE 830) for the document of a check."""
+    s = await need_key(sid, k)
+    from .review.pipeline import review_document
+    from .review.report import render
+    rev = await review_document(s.original.model_copy(deep=True), s.original.filename)
+    name = f"{Path(s.original.filename).stem}_review_iso29148.md"
+    return Response(render(rev), media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 # ------------------------------------------------------------------ static

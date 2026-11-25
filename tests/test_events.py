@@ -112,3 +112,53 @@ def test_several_mentions_start_a_discussion():
     speakers = [e["agent"] for e in new]
     assert {"ambiguity", "regulatory"} <= set(speakers) and len(new) >= 3
     assert new[0]["data"]["to"] == "regulatory"
+    assert new[0]["data"]["working"] and not new[-1]["data"].get("working")
+
+
+def test_cancelled_message_is_forgotten():
+    async def flow():
+        s = create_session(parse_bytes("tz.md", SAMPLE.read_bytes()))
+        await o.run_analysis(s)
+        before, n = s.context, len(s.notes)
+        real = o.pause
+
+        async def hang(*_a, **_k):
+            await asyncio.sleep(30)
+
+        o.pause = hang
+        try:
+            task = asyncio.create_task(o.handle_message(s, "@Комплаенс случайно", None))
+            for _ in range(50):
+                if len(s.notes) > n:
+                    break
+                await asyncio.sleep(0.01)
+            assert len(s.notes) == n + 1 and s.pending_agent == "regulatory"
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert s.context == before and len(s.notes) == n
+        finally:
+            o.pause = real
+
+    run(flow())
+
+
+def test_cancel_says_who_stopped():
+    from app.main import _safe
+
+    async def flow():
+        s = create_session(parse_bytes("tz.md", SAMPLE.read_bytes()))
+        s.pending_agent = "reporter"
+        s.cancel_token = 1
+
+        async def hang():
+            await asyncio.sleep(30)
+
+        task = asyncio.create_task(_safe(s, hang()))
+        await asyncio.sleep(0.05)
+        task.cancel()
+        await task
+        last = s.chat_log.items[-1]
+        assert last["agent"] == "reporter" and last["text"] == "Остановил."
+
+    run(flow())

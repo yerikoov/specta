@@ -7,3 +7,6 @@ __pycache__/
 data/
 *.sqlite
 *.sqlite-*
+*.egg-info/
+build/
+.cursor/

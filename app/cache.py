@@ -29,7 +29,7 @@ _conn: sqlite3.Connection | None = None
 _conn_path: str | None = None
 
 # what the cached answers depend on: when any of these files changes, the fingerprint changes
-KNOWLEDGE = ["kb/*.md", "config/*.yaml", "app/agents/*.py", "app/llm.py"]
+KNOWLEDGE = ["kb/*.md", "config/*.yaml", "app/agents/*.py", "app/llm.py", "app/review/*.py"]
 
 
 def enabled() -> bool:

@@ -114,6 +114,7 @@ class Document(BaseModel):
     title: str = ""
     sections: list[Section] = Field(default_factory=list)
     appendix: list[str] = Field(default_factory=list)     # extra attached files (text)
+    numbered: bool = False                                # the document numbers its own clauses («3.1»)
 
     def get(self, ref: str) -> Optional[Section]:
         for s in self.sections:

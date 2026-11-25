@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import time
 
@@ -82,6 +83,9 @@ async def run_analysis(s: Session) -> None:
         await item("read", f"Файл: {doc.filename} ({doc.filetype.upper()})", "parser", "curious")
         await item("read", f"Страниц: {doc.pages}")
         await item("read", f"Найдено разделов: {len(top)}, пронумерованных пунктов: {len(items)}", "parser", "happy")
+        if doc.appendix:
+            names = ", ".join(a.split("\n", 1)[0].strip("[]") for a in doc.appendix)
+            await item("read", f"Приложения ({len(doc.appendix)}): {names} — агенты учтут их при проверке", "parser", "happy")
         if s.context:
             await item("read", f"Контекст проекта учтён: «{short(s.context, 70)}»")
         like = tz_likeness(doc)
@@ -462,9 +466,28 @@ async def maybe_continue(s: Session) -> None:
         await final_report(s)
 
 
+REVIEW_MIN = float(os.getenv("REVIEW_MIN_PER_FINDING", "10"))   # assumption: manual review per issue, minutes
+USD_KZT = float(os.getenv("USD_KZT", "500"))
+
+
+def effect(s: Session) -> dict:
+    """Business effect of this check, in numbers. Time saved is an estimate with a visible assumption."""
+    kept = [f for f in s.findings if f.status != "dropped" and not f.key.endswith(":stub")]
+    usd = s.usage.get("usd", 0)
+    return {"defects": len(kept),
+            "critical": sum(f.severity == "critical" for f in kept),
+            "contradictions": sum(f.agent == "contradictions" for f in kept),
+            "compliance": sum(f.criterion == "compliance" for f in kept),
+            "hours": round(len(kept) * REVIEW_MIN / 60, 1), "min_per_issue": REVIEW_MIN,
+            "cost_kzt": round(usd * USD_KZT), "cost_usd": round(usd, 4),
+            "saved_usd": round(s.usage.get("saved_usd", 0), 4),
+            "before": s.score_before["total"], "after": s.score["total"]}
+
+
 async def final_report(s: Session) -> None:
     await pause()
-    await s.emit(Event(agent="reporter", type="status", emotion="curious", text="Все вопросы закрыты. Собираю итоговый отчёт и тест-кейсы…"))
+    await s.emit(Event(agent="reporter", type="status", emotion="curious",
+                       text="Все вопросы закрыты. Собираю итоговый отчёт и тест-кейсы…", data={"busy": True}))
     s.tests = await TestabilityAgent(ctx_for(s)).generate_tests(s.doc)
     s.reported = True
     s.score = score_of(s)  # the done card shows before → after itself
@@ -481,7 +504,7 @@ async def final_report(s: Session) -> None:
                   {"label": "Скачать улучшенное ТЗ (.docx)", "url": f"/api/report/{s.id}/export?format=docx"},
                   {"label": "Markdown", "url": f"/api/report/{s.id}/export?format=md"},
                   {"label": "Отчёт (.md)", "url": f"/api/report/{s.id}/export?format=md&kind=report"},
-              ], "summary": s.summary, "share": True, "cost": round(s.usage.get("usd", 0), 4),
+              ], "summary": s.summary, "share": True, "cost": round(s.usage.get("usd", 0), 4), "effect": effect(s),
               "states": agent_states(s)},
     ))
     await save_now(s)
@@ -710,6 +733,12 @@ def mentioned_agent(text: str) -> str | None:
     return got[0] if got else None
 
 
+# how agents format chat replies (the UI turns «- » lines into a list and «п. 3.4» into clickable chips)
+FORMAT = ("Формат: если пунктов больше двух — одна короткая вводная фраза, затем каждый пункт с новой строки, "
+          "начиная с «- », каждый пункт 1 предложение; иначе 1–3 коротких предложения. Без заголовков и таблиц, "
+          "**жирным** — максимум 1–2 ключевых слова.")
+
+
 class Turn(BaseModel):
     agent: str
     to: str | None = None
@@ -743,7 +772,7 @@ async def agents_discuss(s: Session, ids: list[str], question: str) -> None:
             res = await llm.complete_json(
                 "Ты пишешь короткое обсуждение агентов команды проверки ТЗ в общем чате. Аналитик отметил нескольких агентов. "
                 "Первый отмеченный начинает и обращается к коллегам, они отвечают по своей части, первый подводит итог для аналитика. "
-                "3-6 реплик, каждая 1-2 предложения, по-русски, со ссылками на пункты ТЗ. Поле agent — id агента из списка, "
+                "3-6 реплик, каждая 1-2 предложения, по-русски, со ссылками на пункты ТЗ в виде «п. 3.4». Поле agent — id агента из списка, "
                 "to — id адресата или пусто, если реплика для аналитика.",
                 f"Агенты:\n{roster}\n\nСообщение аналитика: {question}", Dialogue, tier="fast",
                 doc=doc_for_prompt(s.doc, 24000), max_tokens=6000, agent=ids[0], purpose="обсуждение агентов")
@@ -769,31 +798,47 @@ async def agents_discuss(s: Session, ids: list[str], question: str) -> None:
         turns.append({"agent": lead, "to": None,
                       "text": f"Итог: у нас с коллегами {n} {plural(n, 'открытое замечание', 'открытых замечания', 'открытых замечаний')}. "
                               "Ответьте на вопросы ниже — и мы обновим ТЗ." if n else "Итог: по этой теме вопросов к ТЗ нет."})
-    for t in turns:
+    for i, t in enumerate(turns):
         await pause(0.5, 1.1)
         await s.emit(Event(agent=t["agent"], type="status", emotion="curious" if t.get("to") else "happy", text=t["text"],
-                           data={"to": t.get("to"), "discussion": True}))
+                           data={"to": t.get("to"), "discussion": True, "working": i < len(turns) - 1}))
 
 
 async def handle_message(s: Session, text: str, command: str | None) -> None:
     if command == "skip":
+        q = s.question(text.strip())
+        if q:
+            s.pending_agent = q.agent
         return await skip_question(s, text.strip())
     if command:
         return await handle_command(s, command)
     text = text.strip()
     if not text:
         return
+    prev_ctx, prev_n = s.context, len(s.notes)
     s.notes.append({"ts": time.time(), "text": text})
     s.context = (s.context + "\n" + text).strip()
+    try:
+        await _handle_message(s, text)
+    except asyncio.CancelledError:
+        s.context = prev_ctx
+        del s.notes[prev_n:]
+        raise
+
+
+async def _handle_message(s: Session, text: str) -> None:
     tagged = mentioned_agents(text)
+    s.pending_agent = tagged[0] if tagged else getattr(s, "pending_agent", None) or "dispatcher"
     if len(tagged) > 1:
         return await agents_discuss(s, tagged, MENTION_RX.sub(lambda m: name(mentioned_agent(m.group(0)) or "") or m.group(0), text).strip())
     mentioned = tagged[0] if tagged else None
     target = mentioned or route(text)
     if not mentioned and target != "dispatcher" and not any(p["agent"] == target and p["chosen"] for p in s.plan):
         target = "dispatcher"
+    s.pending_agent = target
     if target != "dispatcher" and not mentioned:
-        await s.emit(Event(agent="dispatcher", type="status", emotion="neutral", text=f"Передаю агенту «{name(target)}»."))
+        await s.emit(Event(agent="dispatcher", type="status", emotion="neutral",
+                           text=f"Передаю агенту «{name(target)}».", data={"working": True}))
     question = MENTION_RX.sub("", text).strip() or text
     mine_f = [f for f in s.findings if f.agent == target and f.status == "open"]
     await pause()
@@ -806,8 +851,8 @@ async def handle_message(s: Session, text: str, command: str | None) -> None:
             cfg = AGENTS[target]
             res = await llm.run_agent(
                 f"Ты — агент «{cfg['name']}» ({cfg['role']}: {cfg['line']}) в команде проверки ТЗ. "
-                "Аналитик обратился к тебе в чате. Отвечай от своего лица, в рамках своей роли, коротко (1–4 предложения), "
-                "по-русски, ссылаясь на пункты ТЗ. Если вопрос не по твоей части — скажи, кого из команды спросить. "
+                "Аналитик обратился к тебе в чате. Отвечай от своего лица, в рамках своей роли, по-русски, ссылаясь на пункты "
+                "ТЗ в виде «п. 3.4». " + FORMAT + " Если вопрос не по твоей части — скажи, кого из команды спросить. "
                 "Если для ответа нужна норма или факт вне ТЗ — проверь инструментами и назови источник. " + tool_hint(cfg),
                 f"Твои открытые замечания:\n{own}\n\nЗамечания других агентов:\n{others}\n\nСообщение: {question}",
                 Reply, tier="fast", doc=doc_for_prompt(s.doc, 24000), tools=tools_for(cfg),
@@ -904,9 +949,16 @@ async def handle_command(s: Session, cmd: str) -> None:
 
 
 async def handle_attachment(s: Session, filename: str, text: str, n_sections: int) -> None:
+    s.pending_agent = "parser"
     s.doc.appendix.append(f"[{filename}]\n{text}")
-    await s.emit(Event(agent="parser", type="status", emotion="happy",
-                       text=f"Прочитал приложение «{filename}»: {n_sections} разделов. Перепроверяю ТЗ с учётом приложения…"))
-    await recheck(s, [], doc_level=True)
-    await score_event(s, "Пересчитал оценку с учётом приложения")
-    await maybe_continue(s)
+    try:
+        await s.emit(Event(agent="parser", type="status", emotion="happy",
+                           text=f"Прочитал приложение «{filename}»: {n_sections} разделов. Перепроверяю ТЗ с учётом приложения…",
+                           data={"busy": True}))
+        await recheck(s, [], doc_level=True)
+        await score_event(s, "Пересчитал оценку с учётом приложения")
+        await maybe_continue(s)
+    except asyncio.CancelledError:
+        if s.doc.appendix and s.doc.appendix[-1].startswith(f"[{filename}]\n"):
+            s.doc.appendix.pop()
+        raise

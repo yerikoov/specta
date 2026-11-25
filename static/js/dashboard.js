@@ -179,6 +179,15 @@ export function createDashboard({ agentsById, toast, onOpen, onStart, onLanding,
     refresh,
     toggle,
     setActive(sid) { active = sid; renderList(); },
-    busy(on) { home.querySelector(".dz")?.classList.toggle("is-busy", on); },
+    /** Upload in progress: a spinner and the file name over the dropzone (instead of just dimming it). */
+    busy(on, name = null, extra = 0) {
+      const dz = home.querySelector(".dz");
+      if (!dz) return;
+      dz.classList.toggle("is-busy", on);
+      dz.querySelector(".dz-busy")?.remove();
+      if (!on) return;
+      const label = !name ? t("dash.loadingSample") : extra ? t("dash.uploadingN", { name, n: extra }) : t("dash.uploading", { name });
+      dz.insertAdjacentHTML("beforeend", `<div class="dz-busy" role="status" aria-live="polite"><span class="spinner lg" aria-hidden="true"></span><span>${esc(label)}</span></div>`);
+    },
   };
 }

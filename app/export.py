@@ -45,6 +45,12 @@ def report_md(s: Session) -> str:
            "| Критерий | До | После |", "|---|---|---|"]
     for b, a in zip(sb["criteria"], sa["criteria"]):
         out.append(f"| {a['label']} | {b['value']} | {a['value']} |")
+    from .orchestrator import effect
+    e = effect(s)
+    out += ["", "## Эффект проверки", "",
+            f"- Дефектов найдено до разработки: **{e['defects']}** (критичных {e['critical']}, противоречий {e['contradictions']}, комплаенс {e['compliance']})",
+            f"- Работы аналитика сэкономлено: ≈ {e['hours']} ч (допущение: {e['min_per_issue']:g} мин ручного ревью на замечание)",
+            f"- Стоимость проверки: {e['cost_kzt']} ₸ (${e['cost_usd']})"]
     open_f = [f for f in s.findings if f.status == "open"]
     out += ["", f"## Открытые замечания ({len(open_f)})", ""]
     out += [f"- **{SEV[f.severity]}** · п. {f.section_ref or '—'} · {f.text}" for f in open_f] or ["Нет."]

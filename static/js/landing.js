@@ -94,57 +94,107 @@ export function renderLanding(agents) {
   addEventListener("scroll", () => { if (!traf) traf = requestAnimationFrame(pick); }, { passive: true });
   initNav(pick);
 
-  // how it works — bento with live-looking mocks
-  const av = (id, emo, s = 20) => blobSVG(A[id], emo, { size: s, glow: false });
-  document.getElementById("bento").innerHTML = `
-    <div class="tile"><div><h3>${t("how.s1.t")}</h3><p>${t("how.s1.d")}</p></div>
-      <div class="mock">
-        <div class="m-file"><span class="ico">${icon("file-text", 18)}</span><div><b>tz_p2p_v3.docx</b><span>8 разделов · 27 пунктов · 2 стр.</span></div><span style="margin-left:auto">${av("parser", "curious", 28)}</span></div>
-        <div class="m-progress"><i></i></div>
-        <div class="m-sections"><div><span>3.2</span><span>Перевод подтверждается одноразовым SMS-кодом…</span></div>
-          <div><span>3.3</span><span>Суточный лимит переводов — 500 000 ₸</span></div><div><span>4.1</span><span>Приложение должно работать быстро</span></div></div>
-      </div></div>
-    <div class="tile"><div><h3>${t("how.s2.t")}</h3><p>${t("how.s2.d")}</p></div>
-      <div class="mock"><div class="m-chain">
-        ${[["done", "contradictions", "surprised", "Согласованность", "5 противоречий", "warn"],
-           ["done", "ambiguity", "surprised", "Ясность", "7 формулировок", "warn"],
-           ["run", "regulatory", "curious", "Комплаенс", "проверяет KYC…", "run"],
-           ["done", "critic", "wink", "Критик", "убрал 6 ложных", "ok"],
-           ["skip", "security", "sleepy", "Безопасность", "не нужна", ""]].map(([st, id, emo, n, tag, c]) => `
-          <div class="m-row"><span class="st ${st}">${st === "done" ? icon("check", 10) : ""}</span>${av(id, emo)}<b>${n}</b><span class="tag ${c}">${tag}</span></div>`).join("")}
-      </div></div></div>
-    <div class="tile tile--wide"><div><h3>${t("how.s3.t")}</h3><p>${t("how.s3.d")}</p></div>
-      <div class="mock"><div class="m-chat">
-        <div class="m-q"><div class="h">${av("contradictions", "angry", 22)}<b>Согласованность</b><span>· Критично · п. 3.3</span></div>
-          <div class="t">Суточный лимит: какое значение верное?</div>
-          <div class="m-opt on"><span class="k">A)</span>500 000 ₸ (как в п. 3.3)</div>
-          <div class="m-opt"><span class="k">B)</span>1 000 000 тенге (как в п. 5.2)</div>
-          <div class="m-opt"><span class="k">C)</span>Разные лимиты: до и после полной идентификации</div>
-          <div class="m-opt"><span class="k">D)</span>Другое…</div></div>
-        <div class="m-side">
-          <div class="m-diff"><div class="r">п. 5.2</div><div class="o">Лимит переводов в сутки составляет <del>1 000 000 тенге</del>.</div>
-            <div class="n">Лимит переводов в сутки составляет <ins>500 000 ₸</ins>.</div></div>
-          <div class="m-score">${av("reporter", "happy", 26)}<b>58</b><span>/100</span><span class="up">+4</span><span style="margin-left:auto">Пересчитал оценку</span></div>
-          <div class="m-score">${av("critic", "wink", 26)}<span>Перепроверил п. 5.2 — новых проблем нет.</span></div>
+  // how it works — steps on the left, a live product screen on the right that follows the active step
+  const av = (id, emo, sz = 20) => blobSVG(A[id], emo, { size: sz, glow: false });
+  const mark = (st) => st === "done"
+    ? `<span class="tk-mark done">${icon("check", 11)}</span>`
+    : st === "run"
+      ? `<span class="tk-mark run"></span>`
+      : `<span class="tk-mark"></span>`;
+  const SCREENS = [
+    { file: "Новая проверка", body: `
+      <div class="up">
+        <div class="up-drop">
+          <span class="up-ico">${icon("upload", 20)}</span>
+          <p>Перетащите ТЗ или <b>выберите файл</b></p>
+          <small>DOCX, PDF, Markdown · до 15 МБ</small>
         </div>
-      </div></div></div>
-    <div class="tile"><div><h3>${t("how.s4.t")}</h3><p>${t("how.s4.d")}</p></div>
-      <div class="mock">${matrixHtml("bentoDots")}</div></div>
-    <div class="tile"><div><h3>${t("how.s5.t")}</h3><p>${t("how.s5.d")}</p></div>
-      <div class="mock"><div class="m-doc">
-        <div class="ln"><span>4.1</span>Приложение должно работать не более чем за 1 секунду для 95% запросов.</div>
-        <div class="ln new"><span>9.1</span>Переводы доступны только клиентам, прошедшим полную идентификацию.</div>
-        <div class="ln new"><span>11.1</span>Каждое требование подтверждается тест-кейсом TC-x.y.</div>
-        <div class="m-dl"><span class="pri">${icon("download", 14)}Улучшенное ТЗ (.docx)</span><span>Отчёт (.md)</span><span>14 тест-кейсов</span></div>
-      </div></div></div>`;
+        <div class="up-file">
+          <span class="up-badge doc">${icon("file-text", 16)}</span>
+          <div><b>tz_bnpl_v2.docx</b><span>8 разделов · 35 пунктов</span><i class="up-bar"><i></i></i></div>
+          <em>78%</em>
+        </div>
+        <div class="up-file is-done">
+          <span class="up-badge pdf">${icon("file", 16)}</span>
+          <div><b>api_spec.pdf</b><span>Приложение · 12 стр.</span></div>
+          <em class="ok">${icon("check", 13)}</em>
+        </div>
+      </div>` },
+    { file: "Команда проверки", body: `
+      <div class="tk">
+        <div class="tk-h"><b>Команда проверяет</b><span>4 / 5</span></div>
+        ${[["done", "contradictions", "surprised", "Согласованность", "5 противоречий", "готово"],
+           ["done", "ambiguity", "surprised", "Ясность", "7 размытых формулировок", "готово"],
+           ["run", "regulatory", "curious", "Комплаенс", "сверяет KYC и ПДн", "сейчас"],
+           ["done", "testability", "happy", "Тестируемость", "6 непроверяемых", "готово"],
+           ["done", "critic", "wink", "Критик", "снял 6 ложных", "готово"]].map(([st, id, emo, n, sub, tag]) => `
+          <div class="tk-row ${st}">${mark(st)}${av(id, emo, 26)}<div><b>${n}</b><span>${sub}</span></div><em>${tag}</em></div>`).join("")}
+      </div>` },
+    { file: "Вопрос 1 из 18", body: `
+      <div class="qn">
+        <div class="qn-top">${av("contradictions", "angry", 22)}<b>Согласованность</b><span class="qn-n">1 из 18</span><span class="qn-dashes"><i class="on"></i><i></i><i></i></span></div>
+        <h3>Сумма одной операции: какое значение верное?</h3>
+        <p>В п. 3.4 и п. 5.2 стоят разные пределы.</p>
+        <div class="qn-opt on"><span>1</span><div><b>500 000 ₸</b><small>как в п. 3.4</small></div><i></i></div>
+        <div class="qn-opt"><span>2</span><div><b>300 000 ₸</b><small>как в п. 5.2</small></div><i></i></div>
+        <div class="qn-opt"><span>3</span><div><b>Два предела</b><small>до и после полной идентификации</small></div><i></i></div>
+        <div class="qn-foot"><span>1–3 — выбрать</span><span class="qn-go">Применить</span></div>
+      </div>` },
+    { file: "tz_bnpl_v3.docx", body: `
+      <div class="df">
+        <div class="df-h"><span>tz_bnpl_v3.docx</span><b class="add">+3</b><b class="del">−1</b></div>
+        <div class="df-ln"><s>4.1</s><span>Страница оформления загружается не более чем за 1 с для 95% запросов.</span></div>
+        <div class="df-ln del"><s>−</s><span>Максимальная сумма одной операции — 300 000 ₸</span></div>
+        <div class="df-ln add"><s>+</s><span>Максимальная сумма одной операции — 500 000 ₸</span></div>
+        <div class="df-ln add"><s>+</s><span>Операция доступна клиенту только после полной идентификации.</span></div>
+        <div class="df-ln add"><s>+</s><span>Клиент даёт отдельное согласие на запрос в бюро.</span></div>
+      </div>
+      <div class="fs-dl"><span class="pri">${icon("download", 14)}Улучшенное ТЗ .docx</span><span>14 тест-кейсов</span><span>Ссылка для заказчика</span>
+        <span class="ok">${icon("check", 14)}94 / 100</span></div>` },
+  ];
+  const how = document.getElementById("bento");
+  how.className = "flow";
+  how.innerHTML = `
+    <ol class="flow__steps" role="tablist">${[1, 2, 3, 4].map((n, k) => `
+      <li><button class="flow__step" role="tab" data-k="${k}" aria-selected="false">
+        <span class="n">0${n}</span><span class="tx"><b>${t(`how.s${n}.t`)}</b><span>${t(`how.s${n}.d`)}</span></span>
+        <i class="bar"><i></i></i></button></li>`).join("")}</ol>
+    <div class="flow__screen" aria-live="polite">
+      <div class="flow__bar"><span class="dots"><i></i><i></i><i></i></span><span class="name" id="flowName"></span><span class="brand">${PRODUCT_NAME}</span></div>
+      <div class="flow__body" id="flowBody"></div>
+    </div>`;
+  const steps = [...how.querySelectorAll(".flow__step")];
+  const body = document.getElementById("flowBody");
+  const DUR = 5200;
+  let step = -1, timer = 0;
+  const show = (k, auto = false) => {
+    step = k;
+    steps.forEach((b, i) => { b.classList.toggle("is-on", i === k); b.setAttribute("aria-selected", i === k); });
+    const strip = how.querySelector(".flow__steps");   // phones: the steps are a horizontal strip — keep the active one in view
+    if (strip.scrollWidth > strip.clientWidth) strip.scrollTo({ left: steps[k].parentElement.offsetLeft - 20, behavior: reduce ? "auto" : "smooth" });
+    how.style.setProperty("--dur", reduce ? "0ms" : `${DUR}ms`);
+    document.getElementById("flowName").textContent = SCREENS[k].file;
+    body.classList.remove("in"); void body.offsetWidth;
+    body.innerHTML = SCREENS[k].body;
+    body.classList.add("in");
+    clearTimeout(timer);
+    if (!reduce && !how.matches(":hover")) timer = setTimeout(() => show((k + 1) % SCREENS.length, true), DUR);
+  };
+  steps.forEach((b) => b.addEventListener("click", () => show(+b.dataset.k)));
+  how.addEventListener("mouseenter", () => { clearTimeout(timer); how.classList.add("is-paused"); });
+  how.addEventListener("mouseleave", () => { how.classList.remove("is-paused"); show(step); });
+  // start when the section scrolls into view, so the first step isn't over before anyone sees it
+  new IntersectionObserver((es, o) => { if (es[0].isIntersecting) { show(0); o.disconnect(); } }, { threshold: 0.35 }).observe(how);
+  show(0);
+  clearTimeout(timer);
 
   // before → after playground
   const play = document.getElementById("play");
   play.innerHTML = `
     <div class="play__stage"><div class="play__center"><div id="playAv"></div>
-        <div class="play__score"><span class="n" id="playN">4</span><span class="of">/10</span></div>
+        <div class="play__score"><span class="n" id="playN">42</span><span class="of">/100</span></div>
         <div class="play__quote" id="playQ"></div></div>
-      <div class="play__foot"><span id="playFoot">score.total = 42</span><span>sample_tz_p2p.md</span></div></div>
+      <div class="play__foot"><span id="playFoot"></span><span>sample_tz_p2p.md</span></div></div>
     <div class="play__panel">
       <div class="play__head"><span>${t("ex.panel")}</span><span class="label">${icon("chart", 14)}</span></div>
       <div class="seg" id="playSeg"><button data-k="1" class="is-on">${t("ex.before")}</button><button data-k="2">${t("ex.after")}</button></div>
@@ -155,10 +205,10 @@ export function renderLanding(agents) {
     const after = k === 2;
     play.querySelectorAll("#playSeg button").forEach((b) => b.classList.toggle("is-on", +b.dataset.k === k));
     document.getElementById("playAv").innerHTML = blobSVG(A.reporter, after ? "happy" : "sad", { size: 130 });
-    document.getElementById("playN").textContent = after ? "8" : "4";
+    document.getElementById("playN").textContent = after ? "94" : "42";
     document.getElementById("playN").style.color = after ? "#7be08a" : "#ff9c9c";
-    document.getElementById("playFoot").textContent = after ? "score.total = 86" : "score.total = 42";
-    document.getElementById("playQ").textContent = after ? "35 замечаний закрыто, ТЗ можно отдавать в разработку." : "22 дефекта: размытые формулировки, противоречия в лимитах, нет KYC/AML.";
+    document.getElementById("playFoot").textContent = after ? t("ex.after") : t("ex.before");
+    document.getElementById("playQ").textContent = after ? t("ex.cap2") : t("ex.cap1");
     const fix = document.getElementById("playFix");
     fix.classList.toggle("after", after);
     fix.textContent = after ? "4.1 Приложение должно работать не более чем за 1 секунду для 95% запросов." : "4.1 Приложение должно работать быстро.";
@@ -167,41 +217,38 @@ export function renderLanding(agents) {
   play.querySelector("#playSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setPlay(+b.dataset.k); });
   setPlay(1);
 
-  // coverage — API-style list
+  // coverage — the regulator's checklist as a grid of short tiles
   const COV = [
-    ["kyc_identification", "ПОД/ФТ", "Как банк идентифицирует отправителя и получателя: ИИН, документ, eGov, биометрия.", "критично"],
-    ["aml_monitoring", "ПОД/ФТ", "Мониторинг подозрительных операций и передача сведений в АФМ.", "критично"],
-    ["sanctions", "ПОД/ФТ", "Проверка по санкционным перечням и перечню лиц, связанных с терроризмом.", "важно"],
-    ["pd_consent", "Закон о ПДн", "Согласие на обработку, хранение баз на территории РК, сроки хранения и маскирование.", "критично"],
-    ["pci_dss", "Платёжные карты", "Токенизация, запрет хранения PAN, контур PCI DSS — если в ТЗ есть карты.", "критично"],
-    ["nbrk_payments", "НБ РК", "Закон «О платежах и платёжных системах»: сроки исполнения, информирование клиента.", "важно"],
-    ["encryption", "ИБ", "Шифрование при передаче (TLS 1.2+) и хранении, ключи в HSM.", "критично"],
-    ["antifraud", "ИБ", "Антифрод-мониторинг и защита от социальной инженерии в P2P-переводах.", "критично"],
+    ["user-check", "KYC", "Идентификация клиента", "crit"],
+    ["activity", "AML", "Подозрительные операции", "crit"],
+    ["shield", "Санкции", "Перечни АФМ", "imp"],
+    ["lock", "ПДн", "Согласие и хранение в РК", "crit"],
+    ["credit-card", "PCI DSS", "Карточные данные", "crit"],
+    ["landmark", "НБ РК", "Закон о платежах", "imp"],
+    ["key", "Шифрование", "TLS 1.2+, ключи в HSM", "crit"],
+    ["alert-triangle", "Антифрод", "Социальная инженерия", "crit"],
   ];
-  document.getElementById("covList").innerHTML = COV.map(([id, type, d, sev]) => `
-    <div class="api__item"><div class="api__name"><code>${id}</code><span>${type}</span></div><p>${d}</p>
-      <div class="def">${t("cov.checks")}: <b>${sev}</b></div></div>`).join("");
+  document.getElementById("covList").innerHTML = COV.map(([ic, name, d, sev], i) => `
+    <div class="reg__tile ${sev}" style="--i:${i}"><span class="reg__ic">${icon(ic, 20)}</span>
+      <b>${name}</b><span>${d}</span></div>`).join("");
 
-  // banner
+  // numbers + trust
   document.getElementById("proCard").innerHTML = `
-    <div><span class="pro__chip">${t("pro.chip")}</span><h3>${t("pro.title")}</h3><p>${t("pro.sub")}</p></div>
-    <div><div class="pro__stats"><div><b>13</b><span>${t("pro.s1")}</span></div><div><b>8</b><span>${t("pro.s2")}</span></div>
-      <div><b>5</b><span>${t("pro.s3")}</span></div><div><b>22/22</b><span>${t("pro.s4")}</span></div></div>
-      <button class="btn btn-primary" data-action="sample">${t("pro.btn")}</button></div>`;
+    <div class="pro__top"><span class="pro__chip">${t("pro.chip")}</span><h3>${t("pro.title")}</h3></div>
+    <div class="pro__stats">
+      <div><b>22<i>/22</i></b><span>${t("pro.s1")}</span></div>
+      <div><b>~1<i> мин</i></b><span>${t("pro.s2")}</span></div>
+      <div><b>54<i>→</i>20</b><span>${t("pro.s3")}</span></div>
+      <div><b>0<i> ₸</i></b><span>${t("pro.s4")}</span></div>
+    </div>
+    <div class="pro__foot">
+      <div class="pro__trust">${[["lock", "pro.t1"], ["server", "pro.t2"], ["shield", "pro.t3"]].map(([ic, k]) => `<span>${icon(ic, 15)}${t(k)}</span>`).join("")}</div>
+      <button class="btn btn-primary" data-action="sample">${t("pro.btn")}${icon("arrow-right", 15)}</button>
+    </div>`;
 
   // CTA
   document.getElementById("ctaAvatar").innerHTML = blobSVG(A.testability, "happy", { size: 120 });
 
-  // reveal bars when scrolled in
-  const io2 = new IntersectionObserver((es) => es.forEach((e) => {
-    if (!e.isIntersecting) return;
-    e.target.querySelectorAll(".bar > i[data-w]").forEach((i) => (i.style.width = i.dataset.w + "%"));
-    const dots = e.target.querySelector("#bentoDots");
-    if (dots) drawInto(dots, 2);   // dots pop in when the tile scrolls into view
-    io2.unobserve(e.target);
-  }), { threshold: 0.25 });
-  drawInto(document.getElementById("bentoDots"), 2);   // drawn right away, replayed when it scrolls into view
-  document.querySelectorAll("#bento .tile").forEach((el) => io2.observe(el));
 }
 
 /**
