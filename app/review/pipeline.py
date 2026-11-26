@@ -178,9 +178,11 @@ async def review_document(doc, filename: str, on_event: Optional[Event] = None, 
         kept = []
         for i, d in enumerate(pool):
             r = rulings.get(i)
-            if r and not r.keep and d.severity == "critical" and "дубл" not in r.reason.lower():
-                # a critical finding is only dropped as a duplicate; otherwise the Critic may only lower its severity
-                d.severity = "major"
+            protected = d.severity == "critical" or d.prop in ("correct", "consistent")
+            dup = re.search(r"дубл|повтор", r.reason.lower()) if r else None
+            if r and not r.keep and protected and not dup:
+                # critical findings and contradictions are only dropped as duplicates; otherwise one step lower
+                d.severity = {"critical": "major", "major": "minor"}.get(d.severity, "minor")
                 kept.append(d)
                 continue
             if r and not r.keep:

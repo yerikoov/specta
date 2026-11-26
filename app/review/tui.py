@@ -192,7 +192,8 @@ class ReviewUI:
         body.append(f"●{sev['minor']}\n", style="grey62")
         body.append(f"Разработку начинать: {v.get('development', '—')}   ·   тестирование: {v.get('testing', '—')}\n", style="bold")
         n = rev.usage.get("calls", 0) + rev.usage.get("cache_hits", 0)
-        body.append(f"{rev.finished - rev.started:.0f} с · обращений к модели: {n} · {rev.model}", style="grey50")
+        body.append(f"{rev.finished - rev.started:.0f} с · обращений к модели: {n} · {rev.model}\n", style="grey50")
+        body.append("Тот же документ в браузере, ответ сразу правит текст: uvicorn app.main:app → http://localhost:8000", style="grey70")
         grid = Table.grid(padding=(0, 3))
         if self.animate:
             grid.add_column(no_wrap=True)

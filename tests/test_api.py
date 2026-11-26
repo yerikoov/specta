@@ -65,3 +65,15 @@ def test_upload_with_appendices():
     assert not any("installments" in (x.text or "") for x in s.doc.sections)     # appendix is not part of the TZ
     bad = client.post("/api/upload", files=[("file", ("tz.md", tz, "text/markdown")), ("extra", ("x.exe", b"MZ", "application/x"))])
     assert bad.status_code == 400 and "x.exe" in bad.json()["detail"]
+
+
+def test_site_opens_without_an_account_and_keeps_the_check():
+    cfg = client.get("/api/config").json()
+    assert cfg["storage"] == "local" and cfg["auth"] is False
+    who = client.post("/api/auth/enter").json()
+    assert who["user"]["id"] == "local" and who["access_token"] == "local"
+    r = client.post("/api/upload", data={"sample": "true"}, headers={"Authorization": "Bearer local"})
+    sid = r.json()["session_id"]
+    from app.db import supa
+    assert asyncio.run(supa.load(sid))["user_id"] == "local"
+    assert any(m["id"] == sid for m in client.get("/api/sessions", headers={"Authorization": "Bearer local"}).json())

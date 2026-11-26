@@ -160,3 +160,11 @@ def test_gemini_schema_is_flattened(schema_has_refs):
     from app.review.agents import RDefs
     flat = json.dumps(_flat(RDefs.model_json_schema()))
     assert "$ref" not in flat and "$defs" not in flat and "additionalProperties" not in flat
+
+
+def test_decomposed_unicode_from_macos_is_normalised():
+    import unicodedata
+    nfd = unicodedata.normalize("NFD", API_DOC + "\n### Ревью требований\n| Проверка | Да / Нет |\n| :--- | :--- |\n| Версия | Да / Нет |\n")
+    reqs, skipped = slice_requirements(parse_bytes("api.md", nfd.encode()))
+    assert any("Ревью требований" in s for s in skipped)
+    assert not any("Ревью" in r.section for r in reqs)

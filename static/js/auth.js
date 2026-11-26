@@ -18,6 +18,7 @@ export function initAuth(o) {
 /** Resolves once the user is signed in (opens the card if needed). */
 export function requireAuth(mode = "login") {
   if (api.user) return Promise.resolve(api.user);
+  if (api.local) return api.enter();
   openModal(mode);
   return new Promise((res, rej) => (pending = { res, rej }));
 }

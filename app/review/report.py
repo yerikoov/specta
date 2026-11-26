@@ -149,8 +149,14 @@ def render(rev: Review) -> str:
         w("")
         w("| # | Тип | Где | Суть |")
         w("|---|---|---|---|")
-        for i, d in enumerate(sorted(crit, key=lambda d: SEV_ORDER[d.severity]), 1):
-            w(f"| {i} | {MARK[d.severity]} {CRITICAL_KINDS[d.prop]} | {_cell(_where(d, rev))} | {_cell(d.problem)} |")
+        shown, seen = 0, set()
+        for d in sorted(crit, key=lambda d: SEV_ORDER[d.severity]):
+            key = set(d.rids) or {d.place}
+            if key & seen:            # the same requirement is already in the table — details are in sections 3–4
+                continue
+            seen |= key
+            shown += 1
+            w(f"| {shown} | {MARK[d.severity]} {CRITICAL_KINDS[d.prop]} | {_cell(_where(d, rev))} | {_cell(d.problem)} |")
         w("")
     # questions (clarification)
     if rev.questions:

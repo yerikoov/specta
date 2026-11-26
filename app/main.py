@@ -146,6 +146,14 @@ async def login(body: LoginIn):
         raise HTTPException(e.status, str(e))
 
 
+@app.post("/api/auth/enter")
+async def enter():
+    """Open the site without an account. Checks are stored in the local file."""
+    if supa.enabled:
+        raise HTTPException(400, "Войдите по email")
+    return supa._local_session("local@specta", "Вы")
+
+
 @app.post("/api/auth/refresh")
 async def refresh(body: RefreshIn):
     try:
@@ -245,7 +253,7 @@ def _since(request: Request, since: int) -> int:
 # ------------------------------------------------------------------ meta
 @app.get("/api/config")
 def config():
-    return {"engine": llm.engine, "models": llm.models, "auth": supa.enabled}
+    return {"engine": llm.engine, "models": llm.models, "auth": supa.enabled, "storage": "supabase" if supa.enabled else "local"}
 
 
 @app.get("/api/agents")

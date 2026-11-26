@@ -1,13 +1,13 @@
 // Thin API client. All endpoints in one place.
-// Auth: Supabase session (access + refresh token) kept in localStorage; every request carries
-// `Authorization: Bearer …`. SSE and file downloads can't send headers, so they use the per-check
-// stream key the server hands out with each check.
+// Auth token kept in localStorage. Without an external account the server issues a local session
+// and stores checks in data/specta.sqlite. SSE and downloads use the per-check stream key.
 const AUTH_KEY = "specta.auth";
 const keys = {};               // session id → stream key
 let auth = null;
 try { auth = JSON.parse(localStorage.getItem(AUTH_KEY) || "null"); } catch { auth = null; }
 const listeners = new Set();
 
+let local = false;         // no external account: one local user, checks saved on this machine
 function saveAuth(a) {
   auth = a;
   try { a ? localStorage.setItem(AUTH_KEY, JSON.stringify(a)) : localStorage.removeItem(AUTH_KEY); } catch {}
@@ -49,9 +49,11 @@ export const api = {
   onAuth(fn) { listeners.add(fn); return () => listeners.delete(fn); },
   signup: (email, password, name) => post("/api/auth/signup", { email, password, name }).then((a) => (saveAuth(a), a)),
   login: (email, password) => post("/api/auth/login", { email, password }).then((a) => (saveAuth(a), a)),
+  enter: () => post("/api/auth/enter", {}).then((a) => (saveAuth(a), a)),
   logout: () => saveAuth(null),
+  get local() { return local; },
   // ---- meta
-  config: () => fetch("/api/config").then(json),
+  config: () => fetch("/api/config").then(json).then((c) => { local = c.auth === false; return c; }),
   agents: () => fetch("/api/agents").then(json),
   // ---- checks
   upload(file, context = "", sample = false, extras = []) {

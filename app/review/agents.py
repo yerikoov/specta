@@ -149,7 +149,9 @@ async def critic(doc: Document, defects: list[Defect]) -> dict[int, Ruling]:
             "сумма в тиынах и в тенге, «не более одного» и «независимо от истории») — противоречие реально, keep=true. "
             "Имя класса, контроллера или поля хранения (AlertsController, limit_kzt, card_id) — лишнее проектное решение, "
             "keep=true, даже если раздел шаблона называется «Архитектура» или «Схема». "
-            "Если сомневаешься — keep=true.",
+            "Если сомневаешься — keep=true. Если замечание повторяет другое из списка (та же проблема в тех же или "
+            "соседних требованиях, другими словами) — keep=false, а reason начни со слова «Дубль n», где n — номер "
+            "оставляемого замечания.",
             listing, Rulings, tier="strong", doc=doc_text(doc), max_tokens=6000, agent="critic", purpose="перепроверка замечаний")
     except LLMError as e:
         log.warning("critic failed: %s", e)

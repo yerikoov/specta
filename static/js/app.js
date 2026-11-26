@@ -98,7 +98,7 @@ async function openChat(sid, title) {
   chat = createChat({ sid, agentsById, title, onHome: goDash, toast });
 }
 
-/** Open a saved check (sidebar, recent cards or a reload): the server reopens it from Supabase if needed. */
+/** Open a saved check (sidebar, recent cards or a reload): the server reopens it from the local file if needed. */
 async function reopen(sid) {
   try {
     const r = await api.session(sid);
@@ -152,6 +152,7 @@ async function init() {
   initAuth({ toast, onLogin: () => goDash(), onLogout: () => goLanding() });
   try {
     const [cfg, agents] = await Promise.all([api.config(), api.agents()]);
+    if (api.local && !api.user) await api.enter();
     agentsById = Object.fromEntries(agents.map((a) => [a.id, a]));
     renderLanding(agents);
     initGaze();

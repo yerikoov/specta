@@ -7,6 +7,7 @@ findings can cite "п. 3.2".
 from __future__ import annotations
 
 import io
+import unicodedata
 import re
 from pathlib import Path
 
@@ -376,6 +377,8 @@ def parse_bytes(filename: str, data: bytes) -> Document:
         lines, pages = _extract_text(data)
     else:
         raise ValueError(f"Неподдерживаемый формат: {ext}")
+    # «й», «ё» copied on macOS often arrive decomposed («и» + U+0306): compose them, or headings and words won't match
+    lines = [(k, unicodedata.normalize("NFC", t)) for k, t in lines]
     doc = build_document(filename, lines, pages)
     map_template(doc, load_template())
     return doc
